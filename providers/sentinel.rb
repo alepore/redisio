@@ -35,12 +35,6 @@ def configure
     #Merge the configuration defaults with the provided array of configurations provided
     current = current_defaults_hash.merge(current_instance_hash)
 
-    #Manage Sentinel Configs?
-    if node['redisio']['sentinel']['manage_config'] == true
-      config_action = :create
-    else
-      config_action = :create_if_missing
-    end
 
     recipe_eval do
       sentinel_name = current['name'] || current['port']
@@ -54,6 +48,8 @@ def configure
         home current['homedir']
         shell current['shell']
         system current['systemuser']
+        uid current['uid'] unless current['uid'].nil?
+        not_if { node['etc']['passwd']["#{current['user']}"] }
       end
       #Create the redis configuration directory
       directory current['configdir'] do
@@ -143,7 +139,7 @@ def configure
         owner current['user']
         group current['group']
         mode '0644'
-        action config_action
+        action :create
         variables({
           :name                   => current['name'],
           :piddir                 => piddir,
@@ -155,6 +151,12 @@ def configure
           :syslogfacility         => current['syslogfacility'],
           :masters                => masters_with_defaults
         })
+        not_if do ::File.exists?("#{current['configdir']}/#{sentinel_name}.conf.breadcrumb") end
+      end
+
+      file "#{current['configdir']}/#{sentinel_name}.conf.breadcrumb" do
+        content "This file prevents the chef cookbook from overwritting the sentinel config more than once"
+        action :create_if_missing
       end
 
       #Setup init.d file
